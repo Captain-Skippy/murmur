@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Build Murmur.app from the Swift package and sign it. Usage: scripts/build-app.sh (makes build/Murmur.app)
 #
-# Signing: MURMUR_SIGN_IDENTITY if set, else your one Apple Development identity, else ad-hoc.
+# Signing: MURMUR_SIGN_IDENTITY if set (a Developer ID makes a build to notarize), else your one Apple
+# Development identity, else ad-hoc.
 # With a certificate, Microphone, Accessibility and Input Monitoring grants survive rebuilds: they
 # follow the designated requirement (bundle id plus certificate name). An ad-hoc build works the
 # same, but macOS asks for those permissions again after every rebuild.
@@ -72,10 +73,18 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-# Nested code first, then the app. No hardened runtime: this build is not notarized.
-for b in "$APP/Contents/Resources"/*.bundle; do codesign --force --sign "$IDENTITY" "$b"; done
-codesign --force --sign "$IDENTITY" "$APP/Contents/MacOS/murmur-cli"
-codesign --force --sign "$IDENTITY" --identifier com.cjhorning.murmur "$APP"
+# Nested code first, then the app. A Developer ID build gets what notarization requires (hardened
+# runtime, secure timestamp, the microphone entitlement); scripts/notarize.sh then submits it.
+SIGN=(--force --sign "$IDENTITY")
+APP_SIGN=()
+if [[ $IDENTITY == "Developer ID Application"* ]] ||
+   security find-identity -v -p codesigning | grep -F -- "$IDENTITY" | grep -q '"Developer ID Application'; then
+  SIGN+=(--options runtime --timestamp)
+  APP_SIGN=(--entitlements Resources/Murmur.entitlements)
+fi
+for b in "$APP/Contents/Resources"/*.bundle; do codesign "${SIGN[@]}" "$b"; done
+codesign "${SIGN[@]}" "$APP/Contents/MacOS/murmur-cli"
+codesign "${SIGN[@]}" "${APP_SIGN[@]}" --identifier com.cjhorning.murmur "$APP"
 codesign --verify --strict "$APP"
 "$APP/Contents/MacOS/murmur-cli" >/dev/null  # the kernel runs what was signed
 codesign -d -r- "$APP" 2>&1 | grep designated

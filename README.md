@@ -37,6 +37,11 @@ I built Murmur to replace Wispr Flow for my own daily use. On my Mac it pastes t
 - Xcode 26 or later to build it. Its Metal toolchain compiles MLX's shaders.
 - About 3 GB of disk for the models (speech about 600 MB, cleanup about 2.3 GB) and 16 GB of RAM.
 
+## Download
+
+Get `Murmur-VERSION.zip` from [Releases](https://github.com/Captain-Skippy/murmur/releases), unzip it, drag
+Murmur to Applications and open it. It's signed and notarized by Apple, so it opens without a warning.
+
 ## Build and install
 
 ```sh
@@ -48,7 +53,8 @@ open /Applications/Murmur.app
 ```
 
 `build-app.sh` signs with your Apple Development certificate if you have one. Otherwise it signs ad
-hoc, and macOS will ask for the permissions again after each rebuild.
+hoc, and macOS will ask for the permissions again after each rebuild. With a Developer ID
+(`MURMUR_SIGN_IDENTITY`), `scripts/notarize.sh PROFILE` notarizes the build and zips it for download.
 
 On first launch Murmur opens its window, adds itself to your login items (turn that off in Settings)
 and asks for three permissions. Grant each one; System Settings asks for your password:
