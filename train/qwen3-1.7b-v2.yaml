@@ -1,0 +1,19 @@
+model: mlx-community/Qwen3-1.7B-4bit
+train: true
+data: data
+fine_tune_type: lora
+num_layers: 16
+batch_size: 8
+iters: 300
+learning_rate: 1.0e-4
+max_seq_length: 2048
+mask_prompt: true
+grad_checkpoint: true
+steps_per_report: 20
+steps_per_eval: 100
+save_every: 100
+adapter_path: runs/ADAPTER
+lora_parameters:
+  rank: 16
+  scale: 20.0
+  dropout: 0.05
