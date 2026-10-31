@@ -43,7 +43,7 @@ public struct MurmurSettings: Codable, Sendable, Equatable {
     /// (Renamed from `commandKey`, which defaulted to Right Command; old files drop it.)
     public var rewriteKey: HotkeyChoice? = nil
     public var recognizer = "parakeet-unified"
-    public var cleaner = "none"
+    public var cleaner = "qwen3-4b+lookup"
     public var sounds = true
     /// "automatic" (the Mac's own mic when listed, see MicChoice), "builtin", or a device UID.
     public var microphone = "automatic"
@@ -62,7 +62,7 @@ public struct MurmurSettings: Codable, Sendable, Equatable {
     /// Clean dictations longer than this many words in sentence chunks while the user talks
     /// (faster release; needs a cleaner trained on chunks, v7: bench.md "Chunked cleanup").
     /// 0: one cleanup call after release.
-    public var cleanupChunkWords = 40
+    public var cleanupChunkWords = 0
     /// Longest gap between two taps that counts as a double tap (hands-free).
     public var doubleTapMs = 450
     /// A press shorter than this is a tap, not a dictation.

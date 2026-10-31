@@ -14,7 +14,7 @@ I built Murmur to replace Wispr Flow for my own daily use. On my Mac it pastes t
 - **Local recognition.** NVIDIA's Parakeet runs on the Neural Engine through
   [FluidAudio](https://github.com/FluidInference/FluidAudio). Long dictations are decoded in segments
   while you are still talking, so little is left to do when you let go.
-- **Local cleanup.** An optional small language model ([MLX](https://github.com/ml-explore/mlx-swift))
+- **Local cleanup.** A small language model ([MLX](https://github.com/ml-explore/mlx-swift), Qwen3-4B by default)
   removes "um"s, stutters and false starts and handles self-corrections. "Tuesday, no, Wednesday"
   becomes "Wednesday".
   - It turns numbers, emails, URLs and lists into written form, and spoken "new line" and "comma" into
@@ -35,8 +35,7 @@ I built Murmur to replace Wispr Flow for my own daily use. On my Mac it pastes t
 
 - An Apple silicon Mac running macOS 26 or later.
 - Xcode 26 or later to build it. Its Metal toolchain compiles MLX's shaders.
-- About 1 GB of disk for the speech model. The optional cleanup models need 0.4 to 2.5 GB more and
-  run well with 16 GB of RAM.
+- About 3 GB of disk for the models (speech about 600 MB, cleanup about 2.3 GB) and 16 GB of RAM.
 
 ## Build and install
 
@@ -59,8 +58,8 @@ and asks for three permissions. Grant each one; System Settings asks for your pa
   Control and Data Access".
 - **Input Monitoring**, to see the Fn key.
 
-A banner in the window names any permission still missing. The speech model (about 600 MB) downloads
-the first time Murmur starts. After that it works offline.
+A banner in the window names any permission still missing. The models (about 3 GB) download the first
+time Murmur starts; the window says "Ready" when they're loaded. After that it works offline.
 
 Make Fn do nothing on its own: System Settings → Keyboard → "Press 🌐 key to" → **Do Nothing**.
 
@@ -81,7 +80,7 @@ Restart Murmur after editing it:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `recognizer` | `parakeet-unified` | Speech model; `murmur-cli stacks` lists them all. `parakeet-unified+vote` adds two voters for a little more accuracy and memory. |
-| `cleaner` | `none` | Cleanup model, e.g. `qwen3-4b+lookup` (best of the stock ones) or `qwen3-1.7b+lookup` (lighter). `none` pastes the recognizer's text with fillers removed and your dictionary applied; self-corrections and spoken commands ("new paragraph") need a model. |
+| `cleaner` | `qwen3-4b+lookup` | Cleanup model. `qwen3-1.7b+lookup` is lighter (1 GB) but weaker. `none` pastes the recognizer's text with fillers removed and your dictionary applied; self-corrections and spoken commands ("new paragraph") need a model. |
 | `insertionOverrides` | `{}` | Per-app method, by bundle id: `paste`, `accessibility` or `keystrokes`. |
 | `menuBarIcon` | `false` | Show a menu bar icon. |
 | `warmMicMinutes` | `10` | Keep the mic open this long after dictating so the next one starts instantly (the orange dot shows). |
@@ -106,7 +105,7 @@ shared. You can train your own the same way, on your Mac:
 - **`murmur-cli`** (inside the app at `Contents/MacOS/murmur-cli`) benchmarks recognizers and cleaners
   on your own recordings.
 - **`murmur-cli dictate FILE.wav`** (or `--text "um so..."`) prints what Murmur would paste, using
-  your settings; add `--cleaner qwen3-4b+lookup` to try a cleanup model before switching to it.
+  your settings; add `--cleaner NAME` to try another cleanup model before switching to it.
 - **`murmur-cli import-wispr`** brings in your Wispr Flow history and dictionary, if you used it.
 - **`train/train.sh`** fine-tunes a cleanup model with LoRA. Results land in
   `Application Support/Murmur/models/` and appear as `tuned-NAME` cleaners.
