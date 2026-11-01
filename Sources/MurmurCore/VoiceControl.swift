@@ -19,6 +19,8 @@ public enum ControlAction: Equatable, Sendable {
     /// Cmd+F, then the text.
     case findInPage(String)
     case scroll(ScrollDirection)
+    /// Volume and playback, as the keyboard's media keys.
+    case media(MediaKey)
 
     /// What the indicator says while it happens.
     public var summary: String {
@@ -33,6 +35,22 @@ public enum ControlAction: Equatable, Sendable {
         case .type(let t): "Typing \u{201C}\(t.prefix(30))\u{201D}"
         case .findInPage(let t): "Finding \u{201C}\(t)\u{201D}"
         case .scroll(let d): "Scrolling \(d.rawValue)"
+        case .media(let m): m.label
+        }
+    }
+}
+
+public enum MediaKey: String, Sendable, Equatable, CaseIterable {
+    case volumeUp = "volume_up", volumeDown = "volume_down", mute, playPause = "play_pause", next, previous
+
+    public var label: String {
+        switch self {
+        case .volumeUp: "Volume up"
+        case .volumeDown: "Volume down"
+        case .mute: "Mute"
+        case .playPause: "Play/pause"
+        case .next: "Next track"
+        case .previous: "Previous track"
         }
     }
 }
@@ -97,17 +115,21 @@ public struct KeyChord: Equatable, Sendable {
     public var shift = false
     public var option = false
     public var control = false
+    /// Fn (Globe) held: macOS window tiling is Fn-Control-F, -C and the arrows.
+    public var fn = false
 
-    public init(_ key: String, command: Bool = false, shift: Bool = false, option: Bool = false, control: Bool = false) {
+    public init(_ key: String, command: Bool = false, shift: Bool = false, option: Bool = false, control: Bool = false,
+                fn: Bool = false) {
         self.key = key
         self.command = command
         self.shift = shift
         self.option = option
         self.control = control
+        self.fn = fn
     }
 
     public var label: String {
-        var s = ""
+        var s = fn ? "fn " : ""
         if control { s += "\u{2303}" }
         if option { s += "\u{2325}" }
         if shift { s += "\u{21E7}" }
@@ -321,7 +343,7 @@ public struct ControlParser: Sendable {
                                              "why", "how", "how's", "which", "is", "are", "does", "do", "did", "can", "should"]
 
     static let openVerbs: [[String]] = ["open", "open up", "launch", "start", "switch to", "go to", "bring up", "pull up",
-                                        "show me", "show", "fire up", "navigate to", "visit", "take me to", "get me"]
+                                        "show me", "show", "fire up", "navigate to", "visit", "take me to", "get me", "check"]
         .map { $0.split(separator: " ").map(String.init) }
 
     /// "go to github dot com", "open spotify", "open downloads".
@@ -496,6 +518,23 @@ public struct ControlParser: Sendable {
         add(["switch apps", "switch app", "previous app", "last app"], k("tab"))
         add(["go to top", "go to the top", "top", "top of page", "top of the page", "jump to top"], k("up"))
         add(["go to bottom", "go to the bottom", "bottom", "bottom of page", "bottom of the page", "jump to bottom"], k("down"))
+        add(["left half", "window left", "move window left", "snap left", "tile left", "move this window left",
+             "move this window to the left", "put this window on the left", "put this window on the left half",
+             "move window to the left half", "window to the left"], k("left", cmd: false, ctrl: true))
+        add(["right half", "window right", "move window right", "snap right", "tile right", "move this window right",
+             "move this window to the right", "put this window on the right", "put this window on the right half",
+             "move window to the right half", "window to the right"], k("right", cmd: false, ctrl: true))
+        add(["maximize", "maximize window", "maximize this", "maximize this window", "fill screen", "fill the screen",
+             "make it fill the screen", "make this window bigger"], .keys(KeyChord("f", control: true, fn: true)))
+        add(["center window", "center this window", "center it", "center the window"], .keys(KeyChord("c", control: true, fn: true)))
+        add(["volume up", "turn it up", "turn the volume up", "turn up the volume", "louder", "raise the volume"], .media(.volumeUp))
+        add(["volume down", "turn it down", "turn the volume down", "turn down the volume", "quieter", "softer",
+             "lower the volume"], .media(.volumeDown))
+        add(["mute", "unmute", "mute it", "mute the sound", "mute sound", "toggle mute"], .media(.mute))
+        add(["pause", "play", "resume", "pause music", "play music", "pause the music", "resume music", "pause it",
+             "play it", "stop the music", "pause this", "play pause"], .media(.playPause))
+        add(["next song", "next track", "skip", "skip this song", "skip song", "skip track"], .media(.next))
+        add(["previous song", "previous track", "last song", "go back a song"], .media(.previous))
         add(["page down"], k("pagedown", cmd: false))
         add(["page up"], k("pageup", cmd: false))
         add(["enter", "submit", "send it", "return"], k("return", cmd: false))
@@ -577,6 +616,8 @@ public struct ControlParser: Sendable {
             return target.isEmpty ? nil : .findInPage(target)
         case "scroll":
             return .scroll(ScrollDirection(rawValue: target.lowercased()) ?? .down)
+        case "media":
+            return MediaKey(rawValue: target.lowercased().replacingOccurrences(of: " ", with: "_")).map { .media($0) }
         default:
             return nil
         }

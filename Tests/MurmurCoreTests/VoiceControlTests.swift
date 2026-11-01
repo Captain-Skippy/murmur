@@ -66,6 +66,15 @@ import Testing
         #expect(one("scroll to the top") == .keys(KeyChord("up", command: true)))
     }
 
+    @Test func windowsAndMedia() {
+        #expect(one("put this window on the left half") == .keys(KeyChord("left", control: true)))
+        #expect(one("Maximize.") == .keys(KeyChord("f", control: true, fn: true)))
+        #expect(one("turn the volume up") == .media(.volumeUp))
+        #expect(one("next song") == .media(.next))
+        #expect(one("check my email") == .openApp("Mail"))
+        #expect(parser.action(fromModelJSON: #"{"action":"media","target":"volume_down"}"#) == .media(.volumeDown))
+    }
+
     @Test func pressKeysOrButtons() {
         #expect(one("press command shift t") == .keys(KeyChord("t", command: true, shift: true)))
         #expect(one("Press Enter.") == .keys(KeyChord("return")))

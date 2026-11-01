@@ -113,6 +113,7 @@ public enum CleanupPrompt {
         type: target is the exact text to type.
         find: target is text to find on the current page.
         scroll: target is up, down, left or right.
+        media: target is volume_up, volume_down, mute, play_pause, next or previous.
         none: the words are not a command for the computer.
         Questions are web searches. Pick the single best action; never invent other actions.
         Examples:
@@ -120,6 +121,7 @@ public enum CleanupPrompt {
         "what's the weather in Boston" -> {"action": "search", "target": "weather in Boston", "site": "web"}
         "show me videos of how to tie a tie" -> {"action": "search", "target": "how to tie a tie", "site": "youtube"}
         "make the text bold" -> {"action": "keys", "target": "command b"}
+        "it's too loud" -> {"action": "media", "target": "volume_down"}
         "hit the sign in button" -> {"action": "click", "target": "Sign in"}
         "I had a great day" -> {"action": "none"}
         """

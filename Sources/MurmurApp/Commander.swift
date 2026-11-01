@@ -91,6 +91,9 @@ final class Commander {
         case .scroll(let d):
             Self.scroll(d)
             return (true, nil)
+        case .media(let m):
+            Self.postMedia(m)
+            return (true, nil)
         }
     }
 
@@ -154,6 +157,7 @@ final class Commander {
         if chord.shift { flags.insert(.maskShift) }
         if chord.option { flags.insert(.maskAlternate) }
         if chord.control { flags.insert(.maskControl) }
+        if chord.fn { flags.insert(.maskSecondaryFn) }
         if ["up", "down", "left", "right", "pageup", "pagedown", "home", "end", "forwarddelete"].contains(chord.key)
             || chord.key.hasPrefix("f") && chord.key.count > 1 {
             flags.insert(.maskSecondaryFn)
@@ -167,6 +171,25 @@ final class Commander {
             e.post(tap: .cghidEventTap)
         }
         return true
+    }
+
+    /// A media key, as the keyboard sends it (NX_KEYTYPE_* in a system-defined event).
+    static func postMedia(_ key: MediaKey) {
+        let code: Int = switch key {
+        case .volumeUp: 0
+        case .volumeDown: 1
+        case .mute: 7
+        case .playPause: 16
+        case .next: 17
+        case .previous: 18
+        }
+        for down in [true, false] {
+            let state = down ? 0xA : 0xB
+            let ev = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(state << 8)),
+                                        timestamp: 0, windowNumber: 0, context: nil, subtype: 8,
+                                        data1: (code << 16) | (state << 8), data2: -1)
+            ev?.cgEvent?.post(tap: .cghidEventTap)
+        }
     }
 
     /// Scroll the frontmost window (aimed at its middle, the pointer stays put).
