@@ -74,6 +74,11 @@ Make Fn do nothing on its own: System Settings → Keyboard → "Press 🌐 key 
 - **Hold Fn**, speak and release. The text goes to the cursor.
 - **Hands-free:** double-tap Fn or press Fn+Space; a lock shows on the indicator. Press Fn to finish.
 - **Escape** cancels a dictation.
+- **Voice control** (off until you pick a key, see `controlKey` below): hold the key and say what to do.
+  "Open Safari", "search YouTube for lofi beats", "new tab", "go to github dot com", "press command
+  shift T", "click Sign In", "type see you soon", "scroll down", "quit Spotify". Chain them with "and
+  then", or double-tap the key and keep talking: each command runs at the pause after it, while you
+  say the next. The indicator shows what it did.
 - **Open Murmur again** (Spotlight or double-click) to show its window. It has no Dock icon. The window
   has three tabs:
   - **Home:** recent dictations, with Copy and Insert.
@@ -89,6 +94,8 @@ Restart Murmur after editing it:
 | `cleaner` | `qwen3-4b+lookup` | Cleanup model. `qwen3-1.7b+lookup` is lighter (1 GB) but weaker. `none` pastes the recognizer's text with fillers removed and your dictionary applied; self-corrections and spoken commands ("new paragraph") need a model. |
 | `insertionOverrides` | `{}` | Per-app method, by bundle id: `paste`, `accessibility` or `keystrokes`. |
 | `menuBarIcon` | `false` | Show a menu bar icon. |
+| `controlKey` | none | Key to hold for voice control: `rightOption`, `rightCommand`, `rightControl`, `rightShift` or `fn`. |
+| `controlUsesModel` | `true` | Commands the built-in phrasings miss go to the cleanup model, which picks one action from the same list. |
 | `warmMicMinutes` | `10` | Keep the mic open this long after dictating so the next one starts instantly (the orange dot shows). |
 
 ## Privacy
@@ -102,6 +109,11 @@ Everything Murmur keeps is in `~/Library/Application Support/Murmur`, readable o
 
 `~/Library/Logs/Murmur/timings.jsonl` records how long each stage took, never what you said. Murmur
 connects to the internet only to download models from Hugging Face.
+
+Voice control runs on the Mac too: your words never leave it. What it can do is a short fixed list
+(open, quit, search, keys, click, type, find, scroll); it cannot run scripts or delete files, and the
+model fallback can only pick from the same list. Control commands appear in History; the log keeps
+their timings, not their words.
 
 ## Making it yours
 
@@ -133,6 +145,8 @@ shared. You can train your own the same way, on your Mac:
 - **Cleanup isn't perfect.** It sometimes leaves a filler or drops a phrase, even from a perfect
   transcript ([bench](docs/bench.md)).
 - **Some apps ignore Cmd+V** and need an insertion override.
+- **Voice control clicks only what Accessibility can see** by its label. Buttons drawn as pictures
+  with no label, and most games, are out of reach. Scrolling goes to the frontmost window.
 
 ## License
 

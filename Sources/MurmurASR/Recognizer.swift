@@ -48,10 +48,10 @@ public actor SegmentedSession {
     /// Each segment decoded before release, in order, as soon as its text is known.
     private var onSegment: (@Sendable (String) async -> Void)?
 
-    public init(recognizer: any Recognizer) {
+    public init(recognizer: any Recognizer, segmenter: PauseSegmenter.Config = PauseSegmenter.Config()) {
         self.recognizer = recognizer
-        var c = PauseSegmenter.Config()
-        c.maxSegmentSec = recognizer.maxSegmentSeconds
+        var c = segmenter
+        c.maxSegmentSec = min(c.maxSegmentSec, recognizer.maxSegmentSeconds)
         self.segmenter = PauseSegmenter(config: c)
     }
 

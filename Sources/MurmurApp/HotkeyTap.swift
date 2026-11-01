@@ -3,11 +3,11 @@ import CoreGraphics
 import MurmurCore
 
 /// A session event tap that turns raw key events into state-machine events for the
-/// dictation key, the command key and (in shadow mode) Wispr's Fn key. It passes every
+/// dictation key, the command key, the control key and (in shadow mode) Wispr's Fn key. It passes every
 /// event through, except Escape while Murmur is recording, which it consumes so a cancel
 /// never reaches the app underneath (a coding agent in a terminal, for example).
 final class HotkeyTap {
-    enum Role { case dictation, command, shadow }
+    enum Role { case dictation, command, control, shadow }
 
     var keys: [(HotkeyChoice, Role)] = []
     /// Main thread. Return true to consume the event (only used for Escape).
@@ -49,6 +49,8 @@ final class HotkeyTap {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
+        // Keys voice control posts pass untouched: they are neither our hotkeys nor the user typing.
+        if event.getIntegerValueField(.eventSourceUserData) == Commander.syntheticMark { return Unmanaged.passUnretained(event) }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let t = ms(event)
         if type == .flagsChanged {

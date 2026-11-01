@@ -42,6 +42,12 @@ public struct MurmurSettings: Codable, Sendable, Equatable {
     /// default: a modifier key also starts the mic on every shortcut it is part of.
     /// (Renamed from `commandKey`, which defaulted to Right Command; old files drop it.)
     public var rewriteKey: HotkeyChoice? = nil
+    /// Held to control the Mac by voice ("open Safari", "search for cats", "new tab"); a double
+    /// tap keeps listening and runs each command at a pause. Off by default, like `rewriteKey`.
+    public var controlKey: HotkeyChoice? = nil
+    /// Commands the parser does not know go to the cleanup model, which picks one action from
+    /// the same closed set. Off: only the parser's phrasings work.
+    public var controlUsesModel = true
     public var recognizer = "parakeet-unified"
     public var cleaner = "qwen3-4b+lookup"
     public var sounds = true

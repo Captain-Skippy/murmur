@@ -85,6 +85,15 @@ public final class MLXCleaner: Cleaner, @unchecked Sendable {
         }
     }
 
+    /// Voice control's fallback: the model's raw answer (JSON) for one spoken command.
+    /// It shares the cleanup model; the next dictation re-reads its own system prompt.
+    public func decideControl(_ command: String, appName: String?) async throws -> String {
+        let (out, _) = try await engine.run(system: CleanupPrompt.controlSystem,
+                                            user: CleanupPrompt.controlUser(command: command, appName: appName),
+                                            lookupSource: command, speculate: speculate, onFirst: {})
+        return CleanupPrompt.clean(output: out)
+    }
+
     actor Engine {
         private var ctx: ModelContext?
         private var cache: [KVCache] = []

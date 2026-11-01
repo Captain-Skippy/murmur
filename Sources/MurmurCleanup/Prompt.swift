@@ -100,6 +100,34 @@ public enum CleanupPrompt {
         "<style>\(style.guidance)</style>\n<selection>\(escape(selection))</selection>\n<instruction>\(escape(instruction))</instruction>"
     }
 
+    /// Voice control's fallback: one spoken command to one action from a closed set, as JSON.
+    public static let controlSystem = """
+        You turn one spoken command into one action on a Mac. Reply with only a JSON object \
+        {"action": "...", "target": "...", "site": "..."} and nothing else. Actions:
+        open: target is an app, website or folder name to open or switch to.
+        quit: target is the app to quit, empty for the current app.
+        url: target is a web address.
+        search: target is the search query; site is one of web, images, youtube, amazon, wikipedia, maps, directions, github, reddit.
+        keys: target is a key combination, like "command shift t" or "escape".
+        click: target is the visible label of a button, link or menu item.
+        type: target is the exact text to type.
+        find: target is text to find on the current page.
+        scroll: target is up, down, left or right.
+        none: the words are not a command for the computer.
+        Questions are web searches. Pick the single best action; never invent other actions.
+        Examples:
+        "pull up my email" -> {"action": "open", "target": "Mail"}
+        "what's the weather in Boston" -> {"action": "search", "target": "weather in Boston", "site": "web"}
+        "show me videos of how to tie a tie" -> {"action": "search", "target": "how to tie a tie", "site": "youtube"}
+        "make the text bold" -> {"action": "keys", "target": "command b"}
+        "hit the sign in button" -> {"action": "click", "target": "Sign in"}
+        "I had a great day" -> {"action": "none"}
+        """
+
+    public static func controlUser(command: String, appName: String?) -> String {
+        "<app>\(appName ?? "unknown")</app>\n<command>\(escape(command))</command>"
+    }
+
     /// Keep tags in the material from closing ours.
     public static func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "</transcript>", with: "< /transcript>")

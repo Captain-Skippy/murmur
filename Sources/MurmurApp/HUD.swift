@@ -5,7 +5,7 @@ import SwiftUI
 /// recording, a travelling wave while processing, a short message on refusal or error.
 @MainActor
 final class HUDModel: ObservableObject {
-    enum Phase: Equatable { case hidden, recording(handsFree: Bool, command: Bool), processing, message(String) }
+    enum Phase: Equatable { case hidden, recording(handsFree: Bool, command: Bool, control: Bool = false), processing, message(String) }
     static let barCount = 14
     @Published var phase: Phase = .hidden
     @Published var levels: [CGFloat] = HUDModel.flat
@@ -43,7 +43,8 @@ struct HUDView: View {
 
     private var barTint: Color {
         switch model.phase {
-        case .recording(_, true): HUDColor.rewrite
+        case .recording(_, true, _): HUDColor.rewrite
+        case .recording(_, _, true): HUDColor.control
         case .processing: HUDColor.processing
         default: .white
         }
@@ -53,15 +54,19 @@ struct HUDView: View {
         // Plain `if`s, not a `switch`: each element keeps its identity across phases, so the bars
         // stay put from recording into processing and the tags slide in and out around them.
         HStack(spacing: Space.s) {
-            if case .recording(let handsFree, let command) = model.phase {
+            if case .recording(let handsFree, let command, let control) = model.phase {
                 if command { Tag(symbol: "wand.and.sparkles", text: "Rewrite", tint: HUDColor.rewrite).transition(.opacity) }
+                else if control { Tag(symbol: "command", text: "Control", tint: HUDColor.control).transition(.opacity) }
                 else { RecordingMark(handsFree: handsFree).transition(.scale.combined(with: .opacity)) }
             }
             if model.phase == .processing || model.isRecording {
                 LevelBars(levels: model.levels, processing: model.phase == .processing, tint: barTint)
             }
-            if case .recording(true, true) = model.phase {
+            if case .recording(true, true, _) = model.phase {
                 LockMark(tint: HUDColor.rewrite).transition(.opacity)
+            }
+            if case .recording(true, false, true) = model.phase {
+                LockMark(tint: HUDColor.control).transition(.opacity)
             }
             if case .message(let s) = model.phase {
                 Text(s).font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
@@ -87,6 +92,8 @@ enum HUDColor {
     static let recording = Color(red: 1.0, green: 0.27, blue: 0.23)
     /// The icon's caret: Rewrite (command mode) is the warm state.
     static let rewrite = Color(red: 1.0, green: 0.69, blue: 0.31)
+    /// Voice control: a cool state, so it never reads as dictation about to type.
+    static let control = Color(red: 0.42, green: 0.74, blue: 1.0)
     /// The text is being written: the same bars, dimmed, so it never reads as another mode.
     static let processing = Color.white.opacity(0.55)
 }
@@ -216,11 +223,14 @@ final class HUDController {
         model.phase = phase
     }
 
-    func flash(_ message: String, seconds: Double = 1.6) {
+    /// Show a message, then hide, or return to the phase `then` gives (voice control flashes what
+    /// it did while hands-free listening goes on).
+    func flash(_ message: String, seconds: Double = 1.6, then next: (@MainActor () -> HUDModel.Phase?)? = nil) {
         show(.message(message))
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(seconds))
-            if !Task.isCancelled { self.hide() }
+            guard !Task.isCancelled else { return }
+            if let phase = next?() { self.show(phase) } else { self.hide() }
         }
     }
 

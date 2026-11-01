@@ -51,11 +51,20 @@ final class DictationController {
     /// When set (eval recording mode), finished audio goes here instead of the pipeline.
     var audioSink: (([Float]) -> Void)?
 
+    // Voice control: commands run in order, each as soon as its words are known.
+    private lazy var commander = Commander(inserter: inserter) { [weak self] in self?.settings.insertionOverrides ?? [:] }
+    private var controlChain: Task<Void, Never>?
+    /// An unfinished command ("search for") waiting for the next words.
+    private var controlPending = ""
+    /// Segments of the current control recording already run while the key was down.
+    private var controlSegments: SegmentCounter?
+    private let controlLog = Logger(subsystem: "com.cjhorning.murmur", category: "control")
+
     init() {
         settings = MurmurSettings.load()
         let (dict, snippets) = DictionaryFile.load()
         pipeline = CleanupPipeline(dictionary: dict, snippets: snippets)
-        for r in [HotkeyTap.Role.dictation, .command] {
+        for r in [HotkeyTap.Role.dictation, .command, .control] {
             machines[r] = HotkeyStateMachine(tapMs: Double(settings.tapMs), doubleTapMs: Double(settings.doubleTapMs))
         }
     }
@@ -72,7 +81,7 @@ final class DictationController {
         capture.warmSeconds = new.warmMicMinutes * 60
         settings = new
         tap.keys = tapKeys()
-        for r in [HotkeyTap.Role.dictation, .command] {
+        for r in [HotkeyTap.Role.dictation, .command, .control] {
             machines[r] = HotkeyStateMachine(tapMs: Double(settings.tapMs), doubleTapMs: Double(settings.doubleTapMs))
         }
         if reload {
@@ -113,6 +122,7 @@ final class DictationController {
     private func tapKeys() -> [(HotkeyChoice, HotkeyTap.Role)] {
         var keys = [(settings.dictationKey, HotkeyTap.Role.dictation)]
         if let k = settings.rewriteKey, k != settings.dictationKey { keys.append((k, .command)) }
+        if let k = settings.controlKey, k != settings.dictationKey, k != settings.rewriteKey { keys.append((k, .control)) }
         if settings.shadowMode && settings.dictationKey != .fn { keys.append((.fn, .shadow)) }
         return keys
     }
@@ -142,7 +152,7 @@ final class DictationController {
             case .enterHandsFree:
                 // The first tap's start can fail (secure field, still loading): nothing to keep going.
                 guard role != nil else { machines[r] = freshMachine(); return false }
-                handsFree = true; timings?.hotkeyMode = "handsFree"; hud.show(.recording(handsFree: true, command: r == .command))
+                handsFree = true; timings?.hotkeyMode = "handsFree"; hud.show(.recording(handsFree: true, command: r == .command, control: r == .control))
             case .stopAndProcess: stop(keyUpMs: e.ms)
             case .cancel: cancel()
             }
@@ -190,7 +200,16 @@ final class DictationController {
         timings = t
         role = r
         handsFree = false
-        let s = SegmentedSession(recognizer: recognizer)
+        let s: SegmentedSession
+        if r == .control {
+            // Every short pause ends a command, so each runs while the next is spoken.
+            var cut = PauseSegmenter.Config()
+            cut.minPauseMs = 450
+            cut.minSegmentSec = 0.5
+            s = SegmentedSession(recognizer: recognizer, segmenter: cut)
+        } else {
+            s = SegmentedSession(recognizer: recognizer)
+        }
         session = s
         let (stream, cont) = AsyncStream<[Float]>.makeStream()
         feed = cont
@@ -215,10 +234,21 @@ final class DictationController {
         }
         timings?.micWarm = capture.startedWarm
         Sounds.play(Sounds.start, enabled: settings.sounds)
-        hud.show(.recording(handsFree: false, command: r == .command))
+        hud.show(.recording(handsFree: false, command: r == .command, control: r == .control))
         let focus = Task.detached { Focus.snapshot() }
         focusTask = focus
         chunker = nil
+        controlSegments = nil
+        if r == .control {
+            let counter = SegmentCounter()
+            controlSegments = counter
+            controlPending = ""
+            let segment: @MainActor @Sendable (String) -> Void = { [weak self] text in
+                counter.count += 1
+                self?.enqueueControl(text, final: false, keyUp: nil)
+            }
+            Task { await s.setOnSegment { await segment($0) } }
+        }
         if r == .dictation, audioSink == nil, !(cleaner is PassthroughCleaner), settings.cleanupChunkWords > 0 {
             // Long dictations clean finished sentences while the user is still talking.
             let overrides = settings.styleOverrides
@@ -277,6 +307,25 @@ final class DictationController {
         self.chunker = nil
         let previous = lastProcessing
         let sink = audioSink
+        if r == .control {
+            let counter = controlSegments ?? SegmentCounter()
+            controlSegments = nil
+            let keyUp = t.stamps[.keyUp] ?? monotonicNanos()
+            lastProcessing = Task { @MainActor in
+                defer { self.processing -= 1 }
+                await previous?.value
+                await feedTask?.value
+                let parts = ((try? await session.finishParts()) ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                let fresh = parts.dropFirst(counter.count).filter { !$0.isEmpty }
+                if fresh.isEmpty {
+                    if counter.count == 0 && self.controlPending.isEmpty { self.controlFlash("Heard nothing", failed: true) }
+                    self.enqueueControl("", final: true, keyUp: keyUp)
+                }
+                for (i, p) in fresh.enumerated() { self.enqueueControl(p, final: i == fresh.count - 1, keyUp: keyUp) }
+                await self.controlChain?.value
+            }
+            return
+        }
         lastProcessing = Task { @MainActor in
             defer { self.processing -= 1 }
             await feedTask?.value
@@ -377,6 +426,78 @@ final class DictationController {
         }
         try? history.append(HistoryEntry(app: focus.bundleID, raw: raw, text: text,
                                           mode: r == .command ? "command" : "dictation", inserted: outcome.ok))
+    }
+
+    // MARK: Voice control
+
+    private func enqueueControl(_ text: String, final: Bool, keyUp: UInt64?) {
+        let previous = controlChain
+        let heardAt = monotonicNanos()
+        controlChain = Task { @MainActor in
+            await previous?.value
+            await self.runControl(text, final: final, heardAt: heardAt, keyUp: keyUp)
+        }
+    }
+
+    /// Parse the words (a model decides what the parser cannot), then act. Logs timings and the
+    /// path taken, never the words unless debug logging is on.
+    private func runControl(_ text: String, final: Bool, heardAt: UInt64, keyUp: UInt64?) async {
+        let heard = [controlPending, text.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }.joined(separator: " ")
+        controlPending = ""
+        guard !heard.isEmpty else { return }
+        let parser = commander.parser
+        var actions: [ControlAction] = []
+        var via = "parser"
+        switch parser.parse(heard) {
+        case .actions(let a):
+            actions = a
+        case .incomplete where !final:
+            controlPending = heard
+            return
+        case .incomplete, .unknown:
+            if settings.controlUsesModel, let model = cleaner as? MLXCleaner {
+                via = "model"
+                let app = NSWorkspace.shared.frontmostApplication?.localizedName
+                if let out = try? await model.decideControl(heard, appName: app) {
+                    actions = parser.action(fromModelJSON: out).map { [$0] } ?? []
+                    if settings.debugLogging { controlLog.debug("model said \(out, privacy: .private)") }
+                }
+            } else {
+                via = "none"
+            }
+        }
+        let decided = monotonicNanos()
+        var done: [String] = []
+        var failure: String?
+        if actions.isEmpty { failure = "Not a command: \u{201C}\(heard.prefix(40))\u{201D}" }
+        for a in actions {
+            let (ok, why) = await commander.perform(a)
+            guard ok else { failure = why ?? "Could not: \(a.summary)"; break }
+            done.append(a.summary)
+            controlFlash(a.summary, failed: false)
+        }
+        if let failure { controlFlash(failure, failed: true) }
+        let end = monotonicNanos()
+        let ms = { (a: UInt64, b: UInt64) in String(format: "%.0f", Double(b &- a) / 1e6) }
+        let sinceKey = keyUp.map { ms($0, end) } ?? "-"
+        controlLog.notice("""
+            control via \(via, privacy: .public): \(done.count, privacy: .public) of \(actions.count, privacy: .public) done, \
+            decide \(ms(heardAt, decided), privacy: .public) ms, act \(ms(decided, end), privacy: .public) ms, \
+            key up to done \(sinceKey, privacy: .public) ms
+            """)
+        if settings.debugLogging { controlLog.debug("heard \(heard, privacy: .private)") }
+        try? history.append(HistoryEntry(app: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, raw: heard,
+                                          text: done.isEmpty ? (failure ?? "") : done.joined(separator: "; "),
+                                          mode: "control", inserted: failure == nil))
+    }
+
+    /// What a command did, on the indicator; hands-free listening shows again afterwards.
+    private func controlFlash(_ message: String, failed: Bool) {
+        if failed { Sounds.play(Sounds.error, enabled: settings.sounds) }
+        hud.flash(message, seconds: failed ? 1.8 : 1.1) { [weak self] in
+            guard let self, self.role == .control else { return self?.processing ?? 0 > 0 ? .processing : nil }
+            return .recording(handsFree: self.handsFree, command: false, control: true)
+        }
     }
 
     // MARK: Shadow mode
@@ -499,6 +620,11 @@ final class DictationController {
             _ = await inserter.insert(e.text, into: focus, overrides: settings.insertionOverrides)
         }
     }
+}
+
+/// Segments a control recording ran early; touched on the main actor only.
+final class SegmentCounter: @unchecked Sendable {
+    var count = 0
 }
 
 /// Thread-safe one-shot timestamp for the first cleanup token.

@@ -869,6 +869,8 @@ struct Switch: View {
                                                ("handsfree", .recording(handsFree: true, command: false)),
                                                ("rewrite", .recording(handsFree: false, command: true)),
                                                ("rewrite-handsfree", .recording(handsFree: true, command: true)),
+                                               ("control", .recording(handsFree: false, command: false, control: true)),
+                                               ("control-handsfree", .recording(handsFree: true, command: false, control: true)),
                                                ("processing", .processing),
                                                ("message", .message("Learned \u{201C}Sarah\u{201D}. Open Murmur to add it.")),
                                                ("message-long", .message(String(repeating: "A very long message that keeps going ", count: 4)))]

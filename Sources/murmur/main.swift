@@ -20,6 +20,9 @@ let usage = """
       murmur shadow-pair                          pair shadow captures with Wispr's history (eval set "shadow")
       murmur consensus --stacks A,B,C [--voters wispr,A,C] [--set wispr]  each system (and Wispr) vs the consensus of the others
       murmur bench --stacks asr:cleaner[,asr:cleaner]   the full table per stack (reuses saved results)
+      murmur control FILE.wav... [--model] | --text TEXT [--model]
+                                                  what voice control would do, without doing it: recognize,
+                                                  parse; --model asks your cleanup model what the parser cannot
       murmur stacks                               recognizer stacks available
       murmur e2e --recognizer R --cleaner C [--set murmur] [--min-seconds 0] [--max-seconds 30] [--limit N] [--chunk-words 40]
                                               key release to text, real-time audio; --chunk-words cleans long ones in chunks
@@ -119,6 +122,47 @@ func main() async throws {
         let text = try await rec.transcribe(samples)
         print(text)
         log(String(format: "%.0f ms for %.1f s of audio", Double(monotonicNanos() - t) / 1e6, Double(samples.count) / 16_000))
+
+    case "control":
+        let settings = MurmurSettings.load()
+        let parser = ControlParser(apps: Array(InstalledApps.scan().keys))
+        var heard: [(String, String, Double)] = []   // label, text, recognition ms
+        if let text = args.options["text"] {
+            heard = [("text", text, 0)]
+        } else {
+            guard !args.positional.isEmpty else { throw CLIError(usage) }
+            let rec = try RecognizerStacks.make(args.options["recognizer"] ?? settings.recognizer)
+            try await rec.load()
+            try await rec.setVocabulary(DictionaryFile.load().0.biasingTerms)
+            for file in args.positional {
+                let samples = try AudioFile.read16k(URL(fileURLWithPath: file))
+                let t = monotonicNanos()
+                let text = try await rec.transcribe(samples)
+                heard.append((URL(fileURLWithPath: file).lastPathComponent, text, Double(monotonicNanos() - t) / 1e6))
+            }
+        }
+        var model: MLXCleaner?
+        if args.flags.contains("model") {
+            model = try CleanerStacks.make(settings.cleaner) as? MLXCleaner
+            try await model?.load()
+        }
+        for (label, text, asrMs) in heard {
+            let t = monotonicNanos()
+            var result: String
+            switch parser.parse(text) {
+            case .actions(let a): result = a.map(\.summary).joined(separator: "; ")
+            case .incomplete: result = "(incomplete)"
+            case .unknown: result = "(unknown)"
+            }
+            var via = "parser"
+            if result.hasPrefix("("), let model {
+                via = "model"
+                let out = try await model.decideControl(text, appName: nil)
+                result = parser.action(fromModelJSON: out)?.summary ?? "(none: \(out))"
+            }
+            let decideMs = Double(monotonicNanos() - t) / 1e6
+            print(String(format: "%@\t%@\t%@ via %@\trecognize %.0f ms, decide %.1f ms", label, text, result, via, asrMs, decideMs))
+        }
 
     case "dictate":
         let settings = MurmurSettings.load()
