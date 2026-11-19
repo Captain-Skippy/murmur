@@ -28,7 +28,7 @@ let usage = """
                                               key release to text, real-time audio; --chunk-words cleans long ones in chunks
       murmur asr-vote --stacks A,B,C [--set wispr] [--name N]   word vote over saved results, A primary
       murmur relabel-ceiling [--limit N]          training targets written like the ceiling cleanup (text only, to Claude)
-      murmur ceiling transcripts|cleanups|score [--set wispr] [--candidates asr:cleaner,...] [--max-seconds 60] [--model claude-opus-5-5] [--effort medium] [--redo]
+      murmur ceiling transcripts|cleanups|score [--set wispr] [--candidates asr:cleaner,...] [--max-seconds 60] [--model claude-opus-5-5] [--effort medium] [--redo] [--asr-only]
                                                   the best transcript and cleanup reachable without a person, and scores against them
     """
 
@@ -607,6 +607,7 @@ func ceilingCommand(_ args: Args) async throws {
         print("\nRecognition against the ceiling transcript (\(set.name), \(scoredItems.count) items up to \(Int(args.double("max-seconds", 60))) s).")
         print("* voted on the ceiling, so its own WER is flattered.")
         printAligned(asrRows)
+        if args.flags.contains("asr-only") { return }
 
         // Cleanup: each candidate graded by Claude against the ceiling cleanup (the hand-written
         // expected text on the scripted set, where the ceiling cleanup itself is a candidate).

@@ -16,7 +16,27 @@ public enum RecognizerStacks {
         return q
     }
 
+    /// A tuned Parakeet Unified in Application Support/Murmur/models/NAME: "parakeet-unified@NAME",
+    /// or "parakeet-unified@NAME+vote" in place of the stock model in the vote.
+    static func tuned(_ name: String) -> (dir: URL, vote: Bool)? {
+        guard name.hasPrefix("parakeet-unified@") else { return nil }
+        var model = String(name.dropFirst("parakeet-unified@".count))
+        let vote = model.hasSuffix("+vote")
+        if vote { model = String(model.dropLast("+vote".count)) }
+        guard !model.isEmpty, !model.contains("/") else { return nil }
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Murmur/models/\(model)", isDirectory: true)
+        return (dir, vote)
+    }
+
     public static func make(_ name: String) throws -> any Recognizer {
+        if let t = tuned(name) {
+            guard FileManager.default.fileExists(atPath: t.dir.appendingPathComponent("vocab.json").path) else {
+                throw RecognizerError.unavailable("no tuned model in \(t.dir.path)")
+            }
+            let p = ParakeetUnifiedRecognizer(directory: t.dir)
+            return t.vote ? VotingRecognizer([p, Self.cappedQwen(), ParakeetTDTRecognizer(version: .v2)]) : p
+        }
         switch name {
         case "parakeet-v2": return ParakeetTDTRecognizer(version: .v2)
         case "parakeet-v2+boost": return ParakeetTDTRecognizer(version: .v2, boosting: true)

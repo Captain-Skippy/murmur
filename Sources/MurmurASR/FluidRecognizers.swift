@@ -66,15 +66,22 @@ public final class ParakeetTDTRecognizer: Recognizer, @unchecked Sendable {
 /// Parakeet Unified 0.6B: one checkpoint with punctuation, casing and inverse text
 /// normalization; used here in batch mode on pause-bounded segments.
 public final class ParakeetUnifiedRecognizer: Recognizer, @unchecked Sendable {
-    public let name = "parakeet-unified"
+    public let name: String
     public let boosting: Bool
+    /// A fine-tuned checkpoint converted to Core ML (train/asr/README.md): the parakeet_unified_*
+    /// bundles and vocab.json in this folder. Nil: FluidAudio's stock model.
+    public let directory: URL?
     private let manager = UnifiedAsrManager()
     private var ctcModels: CtcModels?
 
-    public init(boosting: Bool = false) { self.boosting = boosting }
+    public init(boosting: Bool = false, directory: URL? = nil) {
+        self.boosting = boosting
+        self.directory = directory
+        name = directory.map { "parakeet-unified@" + $0.lastPathComponent } ?? "parakeet-unified"
+    }
 
     public func load() async throws {
-        try await manager.loadModels()
+        if let directory { try await manager.loadModels(from: directory) } else { try await manager.loadModels() }
         if boosting { ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m) }
         try await warmUp()
     }
