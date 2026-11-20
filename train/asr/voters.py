@@ -67,15 +67,20 @@ def load_audio(path):
 
 
 class Whisper:
+    """Whisper large-v3, one 30 s window per clip (clips here are 30 s or shorter), batched generate."""
     def __init__(self):
         import torch
-        from transformers import pipeline
-        self.pipe = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3", torch_dtype=torch.float16, device="cuda:0")
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+        name = "openai/whisper-large-v3"
+        self.proc = WhisperProcessor.from_pretrained(name)
+        self.m = WhisperForConditionalGeneration.from_pretrained(name, dtype=torch.float16).cuda().eval()
 
     def __call__(self, items):
-        audio = [{"raw": load_audio(i["path"]), "sampling_rate": 16000} for i in items]
-        out = self.pipe(audio, batch_size=len(items), return_timestamps=True, generate_kwargs={"language": "english", "task": "transcribe"})
-        return [o["text"] for o in out]
+        import torch
+        x = self.proc([load_audio(i["path"]) for i in items], sampling_rate=16000, return_tensors="pt")
+        with torch.inference_mode():
+            y = self.m.generate(x.input_features.cuda().half(), language="english", task="transcribe", max_new_tokens=440)
+        return self.proc.batch_decode(y, skip_special_tokens=True)
 
 
 class Canary:
@@ -98,7 +103,7 @@ class Granite:
         name = "ibm-granite/granite-speech-4.1-2b"
         self.proc = AutoProcessor.from_pretrained(name)
         self.tok = self.proc.tokenizer
-        self.m = AutoModelForSpeechSeq2Seq.from_pretrained(name, device_map="cuda", torch_dtype=torch.bfloat16).eval()
+        self.m = AutoModelForSpeechSeq2Seq.from_pretrained(name, device_map="cuda", dtype=torch.bfloat16).eval()
         chat = [{"role": "user", "content": "<|audio|>transcribe the speech with proper punctuation and capitalization."}]
         self.prompt = self.tok.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
 
