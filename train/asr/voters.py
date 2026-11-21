@@ -150,7 +150,7 @@ def main():
     ap.add_argument("--models", default=",".join(MODELS))
     ap.add_argument("--checkpoint", help="a .nemo to decode as --models NAME (a fine-tuned Parakeet)")
     ap.add_argument("--max-seconds", type=float, default=30)
-    ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--batch", type=int, default=8)
     a = ap.parse_args()
     import torch
     items = load_items(a.manifest, a.max_seconds)
