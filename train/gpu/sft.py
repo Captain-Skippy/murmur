@@ -110,11 +110,11 @@ def main():
 
     targs = TrainingArguments(
         output_dir=str(out / "checkpoints"), num_train_epochs=a.epochs, learning_rate=a.lr, lr_scheduler_type="cosine",
-        warmup_ratio=0.03, per_device_train_batch_size=a.batch, per_device_eval_batch_size=a.batch,
+        warmup_steps=0.03, per_device_train_batch_size=a.batch, per_device_eval_batch_size=a.batch,
         gradient_accumulation_steps=a.accumulate, bf16=True, logging_steps=10, eval_strategy="steps",
         eval_steps=a.eval_steps, save_strategy="steps", save_steps=a.save_steps, save_total_limit=3,
         load_best_model_at_end=True, metric_for_best_model="eval_loss", greater_is_better=False,
-        group_by_length=True, report_to=[], optim="paged_adamw_8bit", gradient_checkpointing=True,
+        report_to=[], optim="paged_adamw_8bit", gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False}, dataloader_num_workers=2, seed=1)
     trainer = Trainer(model=model, args=targs, train_dataset=train, eval_dataset=valid,
                       data_collator=DataCollatorForSeq2Seq(tok, padding=True, label_pad_token_id=-100),
