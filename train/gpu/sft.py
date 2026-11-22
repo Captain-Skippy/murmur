@@ -66,7 +66,7 @@ def main():
     ap.add_argument("--accumulate", type=int, default=4)
     ap.add_argument("--max-len", type=int, default=2048)
     ap.add_argument("--save-steps", type=int, default=50)
-    ap.add_argument("--eval-steps", type=int, default=100)
+    ap.add_argument("--eval-steps", type=int, default=50)
     ap.add_argument("--bits", type=int, default=4, choices=[4, 16])
     a = ap.parse_args()
 
@@ -87,7 +87,7 @@ def main():
     # Longest first within the first batch surfaces an out-of-memory at once, not hours in.
     qcfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16,
                               bnb_4bit_use_double_quant=True) if a.bits == 4 else None
-    model = AutoModelForCausalLM.from_pretrained(a.model, quantization_config=qcfg, torch_dtype=torch.bfloat16, device_map={"": 0})
+    model = AutoModelForCausalLM.from_pretrained(a.model, quantization_config=qcfg, dtype=torch.bfloat16, device_map={"": 0})
     if a.bits == 4:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
     else:

@@ -37,7 +37,7 @@ def main():
         tok.pad_token = tok.eos_token
     qcfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16,
                               bnb_4bit_use_double_quant=True) if a.bits == 4 else None
-    model = AutoModelForCausalLM.from_pretrained(a.model, quantization_config=qcfg, torch_dtype=torch.bfloat16, device_map={"": 0})
+    model = AutoModelForCausalLM.from_pretrained(a.model, quantization_config=qcfg, dtype=torch.bfloat16, device_map={"": 0})
     if a.adapter:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, a.adapter)
