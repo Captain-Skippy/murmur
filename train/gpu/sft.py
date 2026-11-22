@@ -74,7 +74,7 @@ def main():
     from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForSeq2Seq,
                               Trainer, TrainerCallback, TrainingArguments)
     from transformers.trainer_utils import get_last_checkpoint
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    from peft import LoraConfig, get_peft_model
 
     signal.signal(signal.SIGTERM, _term)
     out = Path(a.out)
@@ -84,14 +84,13 @@ def main():
         tok.pad_token = tok.eos_token
     train = load(Path(a.data) / "train.jsonl", tok, a.max_len)
     valid = load(Path(a.data) / "valid.jsonl", tok, a.max_len)
-    # Longest first within the first batch surfaces an out-of-memory at once, not hours in.
     qcfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16,
                               bnb_4bit_use_double_quant=True) if a.bits == 4 else None
     model = AutoModelForCausalLM.from_pretrained(a.model, quantization_config=qcfg, dtype=torch.bfloat16, device_map={"": 0})
-    if a.bits == 4:
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
-    else:
-        model.gradient_checkpointing_enable()
+    # Not peft's prepare_model_for_kbit_training: it casts every unquantized weight to float32, and Qwen3.5's
+    # 248k-token embedding and output tables alone grow to 8 GB, spilling a 12 GB GPU into system memory.
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    model.enable_input_require_grads()
     model = get_peft_model(model, LoraConfig(r=a.rank, lora_alpha=a.alpha, lora_dropout=0.05, task_type="CAUSAL_LM",
                                              target_modules="all-linear"))
     model.print_trainable_parameters()
