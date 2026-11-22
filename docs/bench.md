@@ -189,7 +189,7 @@ Held out, never trained: the `murmur` and `scripted` sets and Wispr's test split
 | --- | --- | --- | --- | --- |
 | parakeet-unified (stock) | 2.00% | 3.14% | 4.71% | 46 / 109 ms |
 | **parakeet-unified, tuned** | 1.75% | 2.59% | 3.70% | 44 / 110 ms |
-| Vote, stock primary (shipped) | 1.59% | 2.56% | 4.37% | 321 / 931 ms |
+| Vote, stock primary (shipped) | 1.59% | 2.56% | 4.37% | 321 / 931 ms* |
 | **Vote, tuned primary** | 1.59% | 2.04% | 3.53% | same as shipped |
 
 Tuned alone reaches the shipped vote's accuracy at the stock model's speed; in the vote it is the best
@@ -197,3 +197,4 @@ stack on every set. Caveats: the training targets and the `murmur` and `wispr` c
 voters, which flatters the tuned model there; the hand references on `scripted` are independent
 (4.71% to 3.70%). Sets are small: differences under about 0.3 points on `murmur` are noise. The vote
 row with the tuned primary is the word vote over saved results (`asr-vote`), not a live run.
+*The vote's tail is from the `e2e` run above (real-time audio); the single-model tails are `bench-asr`'s.
