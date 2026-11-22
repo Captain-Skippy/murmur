@@ -173,3 +173,27 @@ noise changes nothing down to -25 dB, so the limit is signal to noise, not level
 and RNNoise (`arnndn`) before Parakeet made every case worse. Live, 15 dictations of 1 to 11 s
 returned nothing; from this build their audio is kept in the corpus. Next: the whispered lines
 `whisper-5` to `-20`, then a Parakeet fine-tune here with quiet and noisy augmentation.
+
+## Parakeet tuned on the author's voice (2026-11-21)
+
+`train/asr`: Parakeet Unified 0.6B fine-tuned in NeMo (offline mode, all weights, 8-bit AdamW, 5 epochs
+of 6 kept by dev WER) on 3.2 h of the author's dictations (1,199 clips up to 25 s: Murmur's kept
+dictations outside the held-out sets, and Wispr's train split), on one 12 GB laptop GPU. Targets are
+Parakeet's own transcript with only its word errors corrected toward the ceiling transcript (Whisper
+large-v3, Canary-Qwen 2.5B and Granite Speech 4.1 2B voting, Claude settling disputes; text only), so
+punctuation and casing stay Parakeet's. Converted with `train/asr/coreml.sh` (int8 offline encoder) and
+benched through FluidAudio on the Neural Engine; the Core ML model matches NeMo's WER within 0.1 point.
+Held out, never trained: the `murmur` and `scripted` sets and Wispr's test split.
+
+| Recognizer (Core ML) | `murmur` (78) vs ceiling | `wispr` test (134) vs ceiling | `scripted` (40) vs hand references | Tail after release p50 / p95 |
+| --- | --- | --- | --- | --- |
+| parakeet-unified (stock) | 2.00% | 3.14% | 4.71% | 46 / 109 ms |
+| **parakeet-unified, tuned** | 1.75% | 2.59% | 3.70% | 44 / 110 ms |
+| Vote, stock primary (shipped) | 1.59% | 2.56% | 4.37% | 321 / 931 ms |
+| **Vote, tuned primary** | 1.59% | 2.04% | 3.53% | same as shipped |
+
+Tuned alone reaches the shipped vote's accuracy at the stock model's speed; in the vote it is the best
+stack on every set. Caveats: the training targets and the `murmur` and `wispr` ceilings share three
+voters, which flatters the tuned model there; the hand references on `scripted` are independent
+(4.71% to 3.70%). Sets are small: differences under about 0.3 points on `murmur` are noise. The vote
+row with the tuned primary is the word vote over saved results (`asr-vote`), not a live run.
