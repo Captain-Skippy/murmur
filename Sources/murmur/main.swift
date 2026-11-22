@@ -17,6 +17,8 @@ let usage = """
       murmur bench-cleanup --cleaners A,B [--asr wispr|STACK] [--limit N] [--reuse] [--show]
       murmur judge --cleaner C [--asr wispr|STACK] [--limit N] [--model sonnet] [--show]
       murmur import-corpus                        Murmur's kept dictations -> eval set "murmur" with its live outputs
+      murmur export-prompts --set S --asr STACK --out FILE [--all]   the tuned cleaner's prompts for a set (train/gpu)
+      murmur import-cleanups --set S --asr STACK --name NAME --in FILE   outside cleanups as a cleaner's bench results
       murmur shadow-pair                          pair shadow captures with Wispr's history (eval set "shadow")
       murmur consensus --stacks A,B,C [--voters wispr,A,C] [--set wispr]  each system (and Wispr) vs the consensus of the others
       murmur bench --stacks asr:cleaner[,asr:cleaner]   the full table per stack (reuses saved results)
@@ -502,6 +504,51 @@ func main() async throws {
         }
         try Ceiling.save(done, out)
         print("relabel-ceiling: \(done.count) targets in \(out.path)")
+
+    case "export-prompts":
+        // The tuned cleaner's exact prompts (system and user turns, as bench-cleanup builds them) for a
+        // set's items, so a model trained elsewhere (train/gpu) can clean the same inputs. Private: the
+        // output holds transcripts. --all includes train-split items (the default is test items only).
+        let set = try EvalSet.load(args.options["set"] ?? "wispr")
+        let asr = args.options["asr"] ?? "parakeet-unified"
+        let items = set.items.filter {
+            $0.seconds <= args.double("max-seconds", 30) && $0.excluded == nil && (args.flags.contains("all") || $0.isTest)
+        }
+        let raws = BenchCleanup.rawInputs(set: set, items: items, asr: asr)
+        let system = CleanupPrompt.tunedSystem(dictionary: DictionaryFile.load().0.biasingTerms)
+        guard let outPath = args.options["out"] else { throw CLIError("export-prompts needs --out FILE") }
+        var d = Data(), n = 0
+        for item in items {
+            guard let raw = raws[item.id], !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let req = CleanupRequest(raw: raw, style: AppStyle.resolve(bundleID: item.app), appName: BenchCleanup.appName(item.app),
+                                     screenTerms: Array((item.screenTerms ?? []).prefix(30)))
+            let row: [String: Any] = ["id": item.id, "raw": raw,
+                                      "messages": [["role": "system", "content": system], ["role": "user", "content": CleanupPrompt.user(req)]]]
+            d.append(try JSONSerialization.data(withJSONObject: row, options: [.withoutEscapingSlashes, .sortedKeys])); d.append(0x0A)
+            n += 1
+        }
+        let url = URL(fileURLWithPath: outPath)
+        try d.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        print("export-prompts: \(n) prompts from \(set.name) (\(asr)) in \(url.path)")
+
+    case "import-cleanups":
+        // Cleanups produced outside the app (train/gpu/generate.py output: {id, messages}) saved as a
+        // cleaner's bench results, so `ceiling score --candidates ASR:NAME` grades them.
+        let set = try EvalSet.load(args.options["set"] ?? "wispr")
+        let asr = args.options["asr"] ?? "parakeet-unified"
+        guard let name = args.options["name"], let inPath = args.options["in"] else { throw CLIError("import-cleanups needs --name and --in") }
+        let raws = BenchCleanup.rawInputs(set: set, items: set.items, asr: asr)
+        var rows: [CleanupRow] = []
+        for l in try String(contentsOfFile: inPath, encoding: .utf8).split(separator: "\n") {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(l.utf8)) as? [String: Any], let id = o["id"] as? String,
+                  let msgs = o["messages"] as? [[String: String]], let out = msgs.last?["content"], let raw = raws[id] else { continue }
+            rows.append(CleanupRow(id: id, cleaner: name, asr: asr, raw: raw, output: out, usedModel: true, fellBack: nil,
+                                   rejected: nil, ttftMs: 0, totalMs: 0, promptTokens: nil, prefilledTokens: nil, outputTokens: nil,
+                                   modelCalls: nil, acceptedDraft: nil, failures: []))
+        }
+        try Ceiling.save(rows, BenchCleanup.resultsURL(set: set, cleaner: name, asr: asr))
+        print("import-cleanups: \(rows.count) cleanups as \(name) on \(asr) for \(set.name)")
 
     case "import-corpus":
         // Every kept dictation becomes a scored item; what Murmur heard and inserted live are saved
